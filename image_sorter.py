@@ -13,6 +13,7 @@ class ImageSorter:
         self.image_folder = ""
         self.current_image_index = 0
         self.image_files = []
+        self.history = []  # To handle undo functionality
 
         self.label_text = Label(master, text="Select a folder to start")
         self.label_text.pack()
@@ -23,9 +24,13 @@ class ImageSorter:
         self.select_folder_button = Button(master, text="Select Folder", command=self.select_folder)
         self.select_folder_button.pack()
 
-        # Frame for side-by-side button placement and counts
+        # Frame for buttons including undo button
         self.button_frame = Frame(master)
         self.button_frame.pack()
+
+        # Undo button
+        self.undo_button = Button(self.button_frame, text="Undo", command=self.undo_last_action)
+        self.undo_button.pack(side='left', padx=5)
 
         # Labels for counts
         self.count_labels = {}
@@ -54,7 +59,8 @@ class ImageSorter:
 
         # Clear existing buttons and labels before recreating them
         for widget in self.button_frame.winfo_children():
-            widget.destroy()
+            if widget != self.undo_button:
+                widget.destroy()
 
         for category in categories:
             folder_path = os.path.join(self.image_folder, category)
@@ -63,15 +69,13 @@ class ImageSorter:
             else:
                 folder_exists_flag = True
 
-            # Initialize count labels for each category with current count
             initial_count = len(
                 [name for name in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, name))])
             self.count_labels[category] = Label(self.button_frame, text=f"{category}: {initial_count}")
             self.count_labels[category].pack(side='left', padx=10)
 
         if folder_exists_flag:
-            messagebox.showinfo("Notification",
-                                "Sorting folders already exist. Current counts are:.")
+            messagebox.showinfo("Notification", "Sorting folders already exist. Current counts are:")
 
         self.create_sort_buttons(categories)
 
@@ -85,6 +89,8 @@ class ImageSorter:
             destination_folder = os.path.join(self.image_folder, category)
             self.move_image(destination_folder)
             self.update_count(category)
+            # Store the move in history
+            self.history.append((self.image_folder, destination_folder, self.image_files[self.current_image_index - 1]))
 
     def move_image(self, destination_folder):
         if self.current_image_index < len(self.image_files):
@@ -103,6 +109,24 @@ class ImageSorter:
 
         if self.current_image_index >= len(self.image_files):
             self.label_text.config(text="All images have been sorted.")
+
+    def undo_last_action(self):
+        if not self.history:
+            messagebox.showinfo("Undo", "No move to undo.")
+            return
+        # Get the last move details
+        original_folder, moved_folder, file_name = self.history.pop()
+        src_path = os.path.join(moved_folder, file_name)
+        dst_path = os.path.join(original_folder, file_name)
+        shutil.move(src_path, dst_path)
+        self.current_image_index -= 1
+        self.display_image()
+        self.update_count_for_undo(moved_folder)
+
+    def update_count_for_undo(self, moved_folder):
+        category = os.path.basename(moved_folder)
+        current_count = int(self.count_labels[category].cget("text").split(": ")[1]) - 1
+        self.count_labels[category].config(text=f"{category}: {current_count}")
 
     def display_image(self):
         if self.current_image_index < len(self.image_files):
